@@ -4,67 +4,59 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-const (
-	ScreenWidth  = 640
-	ScreenHeight = 480
-	CellSize     = 10
-	Width        = ScreenWidth / CellSize
-	Height       = ScreenHeight / CellSize
-)
-
-type State int32
-
-const (
-	StatePaused State = iota
-	StateRunning
-)
-
 var (
-	Board     [Height][Width]int
-	BoardCopy [Height][Width]int
-
-	NrFramesPerStep = 10
-
 	BackgroundColor = rl.Color{240, 240, 240, 255}
 	AliveColor      = rl.Color{50, 80, 80, 255}
 )
 
 func main() {
+	const (
+		ScreenWidth  = 640
+		ScreenHeight = 480
+		CellSize     = 10
+		Width        = ScreenWidth / CellSize
+		Height       = ScreenHeight / CellSize
+	)
+	// NrFramesPerStep can be changed during runtime.
+	NrFramesPerStep := int32(10)
 	rl.InitWindow(ScreenWidth, ScreenHeight, "Life")
 	rl.SetTargetFPS(60)
-	BoardInit()
+	board := NewRect(Width, Height)
+	board.Init()
+	boardCopy := NewRect(Width, Height)
 	shouldClose := false
 	state := StateRunning
 	var frameNr uint
 	var mousePos rl.Vector2
-	var selected Creature
+	var selected Rect
 	for !shouldClose {
 		// State handling
 		shouldClose = rl.WindowShouldClose() || rl.IsKeyPressed(rl.KeyQ)
 		mousePos = rl.GetMousePosition()
-		mx, my := int(mousePos.X/CellSize), int(mousePos.Y/CellSize)
+		mx, my := int32(mousePos.X/CellSize), int32(mousePos.Y/CellSize)
 		if rl.IsMouseButtonPressed(rl.MouseLeftButton) {
-			if !(0 <= mx && mx <= Width && 0 <= my && my <= Height) {
-				panic(struct{ mx, my int }{mx, my})
+			if !(0 <= mx && mx <= board.width && 0 <= my && my <= board.height) {
+				// Should never trigger
+				panic([]int32{mx, my})
 			}
 			if len(selected.buf) == 0 {
-				Board[my][mx] = (Board[my][mx] + 1) % 2
+				*board.AtPtr(my, mx) = (board.At(my, mx) + 1) % 2
 				state = StatePaused
 			} else {
-				BoardAdd(selected, mx, my)
-				selected = Creature{}
+				board.Add(selected, mx, my)
+				selected = Rect{}
 				state = StateRunning
 			}
 		}
 		switch {
 		case rl.IsKeyPressed(rl.KeyP) || rl.IsKeyPressed(rl.KeySpace):
-			state = State((int(state) + 1) % 2)
+			state = (state + 1) % 2
 		case rl.IsKeyPressed(rl.KeyMinus):
 			NrFramesPerStep = Min(NrFramesPerStep+1, 60)
 		case rl.IsKeyPressed(rl.KeyEqual):
 			NrFramesPerStep = Max(NrFramesPerStep-1, 1)
 		case rl.IsKeyPressed(rl.KeyZero):
-			BoardZero()
+			board.Zero()
 		case rl.IsKeyPressed(rl.KeyOne):
 			selected = Creatures[GliderRight]
 			state = StatePaused
@@ -91,27 +83,26 @@ func main() {
 
 		if state == StateRunning {
 			if frameNr%uint(NrFramesPerStep) == 0 {
-				for y := 0; y < Height; y++ {
-					for x := 0; x < Width; x++ {
-						alive := CellAt(x, y)
-						n := CellNeighbors(x, y)
+				for y := int32(0); y < board.height; y++ {
+					for x := int32(0); x < board.width; x++ {
+						alive := board.At(x, y)
+						n := board.Neighbors(x, y)
 						if (alive == 1 && (n == 2 || n == 3)) || (alive == 0 && n == 3) {
-							BoardCopy[y][x] = 1
+							*boardCopy.AtPtr(x, y) = 1
 						} else {
-							BoardCopy[y][x] = 0
+							*boardCopy.AtPtr(x, y) = 0
 						}
 					}
 				}
-				copy(Board[:], BoardCopy[:])
+				copy(board.buf, boardCopy.buf)
 			}
 			frameNr++
 		}
 
-		for y := 0; y < Height; y++ {
-			for x := 0; x < Width; x++ {
+		for y := int32(0); y < board.height; y++ {
+			for x := int32(0); x < board.width; x++ {
 				var cellColor rl.Color
-				//switch selected.buf[y*selected.width+x] {
-				switch Board[y][x] {
+				switch board.At(x, y) {
 				case 0:
 					cellColor = BackgroundColor
 				case 1:
@@ -124,17 +115,17 @@ func main() {
 		}
 
 		if len(selected.buf) > 0 {
-			for y := 0; y < selected.height; y++ {
-				for x := 0; x < selected.width; x++ {
+			for y := int32(0); y < selected.height; y++ {
+				for x := int32(0); x < selected.width; x++ {
 					var cellColor rl.Color
-					switch selected.buf[y*selected.width+x] {
+					switch selected.At(x, y) {
 					case 0:
 						cellColor = BackgroundColor
 					case 1:
 						cellColor = AliveColor
 					}
-					x0 := ((x + mx) % Width) * CellSize
-					y0 := ((y + my) % Height) * CellSize
+					x0 := ((x + mx) % board.width) * CellSize
+					y0 := ((y + my) % board.height) * CellSize
 					rl.DrawRectangle(int32(x0), int32(y0), CellSize, CellSize, cellColor)
 				}
 			}
@@ -154,27 +145,88 @@ func main() {
 	rl.CloseWindow()
 }
 
-func Min(x, y int) int {
+type State int32
+
+const (
+	StatePaused State = iota
+	StateRunning
+)
+
+func Min(x, y int32) int32 {
 	if x < y {
 		return x
 	}
 	return y
 }
 
-func Max(x, y int) int {
+func Max(x, y int32) int32 {
 	if x < y {
 		return y
 	}
 	return x
 }
 
-type Creature struct {
-	buf    []int
-	width  int
-	height int
+// Rect is used both for the board structure and the stored creatures.
+type Rect struct {
+	buf    []int32
+	width  int32
+	height int32
 }
 
-type CreatureKind int
+func NewRect(width, height int32) Rect {
+	return Rect{make([]int32, width*height), width, height}
+}
+
+func (r Rect) At(x, y int32) int32 {
+	// We add the width/height before calculating the remainder to handle the
+	// case when x or y is negative.
+	x = (x + r.width) % r.width
+	y = (y + r.height) % r.height
+	return r.buf[y*r.width+x]
+}
+
+func (r Rect) AtPtr(x, y int32) *int32 {
+	x = (x + r.width) % r.width
+	y = (y + r.height) % r.height
+	return &r.buf[y*r.width+x]
+}
+
+func (r Rect) Neighbors(x, y int32) int32 {
+	sum := int32(0)
+	for yy := y - 1; yy <= y+1; yy++ {
+		for xx := x - 1; xx <= x+1; xx++ {
+			if yy == y && xx == x {
+				continue
+			}
+			sum += r.At(xx, yy)
+		}
+	}
+	return sum
+}
+
+func (r Rect) Zero() {
+	for i := range r.buf {
+		r.buf[i] = 0
+	}
+}
+
+func (r Rect) Init() {
+	r.Add(Creatures[GliderRight], 0, 0)
+	r.Add(Creatures[GliderRight], 100, 100)
+	r.Add(Creatures[GliderLeft], r.width-6, 0)
+	r.Add(Creatures[PrePulsar], r.width/2-7, r.height-24)
+	r.Add(Creatures[Pulsar], r.width-20, r.height-20)
+}
+
+func (r Rect) Add(c Rect, x0, y0 int32) {
+	for y := int32(0); y < c.height; y++ {
+		for x := int32(0); x < c.width; x++ {
+			*r.AtPtr(x0+x, y0+y) = c.At(x, y)
+		}
+	}
+}
+
+type CreatureKind int32
 
 const (
 	GliderRight CreatureKind = iota
@@ -186,9 +238,9 @@ const (
 	CreatureCount
 )
 
-var Creatures = []Creature{
+var Creatures = [CreatureCount]Rect{
 	GliderRight: {
-		buf: []int{
+		buf: []int32{
 			1, 0, 0,
 			0, 1, 1,
 			1, 1, 0,
@@ -197,7 +249,7 @@ var Creatures = []Creature{
 		height: 3,
 	},
 	GliderLeft: {
-		buf: []int{
+		buf: []int32{
 			0, 0, 1,
 			1, 1, 0,
 			0, 1, 1,
@@ -206,7 +258,7 @@ var Creatures = []Creature{
 		height: 3,
 	},
 	Spaceship: {
-		buf: []int{
+		buf: []int32{
 			1, 0, 0, 1, 0,
 			0, 0, 0, 0, 1,
 			0, 0, 0, 0, 1,
@@ -216,7 +268,7 @@ var Creatures = []Creature{
 		height: 4,
 	},
 	PrePulsar: {
-		buf: []int{
+		buf: []int32{
 			0, 1, 0,
 			1, 1, 1,
 			1, 0, 1,
@@ -227,7 +279,7 @@ var Creatures = []Creature{
 		height: 5,
 	},
 	Pulsar: {
-		buf: []int{
+		buf: []int32{
 			0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1,
@@ -246,7 +298,7 @@ var Creatures = []Creature{
 		height: 13,
 	},
 	QueenBee: {
-		buf: []int{
+		buf: []int32{
 			1, 1, 0, 0,
 			0, 0, 1, 0,
 			0, 0, 0, 1,
@@ -258,47 +310,4 @@ var Creatures = []Creature{
 		width:  4,
 		height: 7,
 	},
-}
-
-func CellAt(x, y int) int {
-	x = (x + Width) % Width
-	y = (y + Height) % Height
-	return Board[y][x]
-}
-
-func CellNeighbors(x, y int) int {
-	sum := 0
-	for yy := y - 1; yy <= y+1; yy++ {
-		for xx := x - 1; xx <= x+1; xx++ {
-			if yy == y && xx == x {
-				continue
-			}
-			sum += CellAt(xx, yy)
-		}
-	}
-	return sum
-}
-
-func BoardZero() {
-	for y := range Board {
-		for x := range Board[y] {
-			Board[y][x] = 0
-		}
-	}
-}
-
-func BoardInit() {
-	BoardAdd(Creatures[GliderRight], 0, 0)
-	BoardAdd(Creatures[GliderRight], 100, 100)
-	BoardAdd(Creatures[GliderLeft], Width-6, 0)
-	BoardAdd(Creatures[PrePulsar], Width/2-7, Height-24)
-	BoardAdd(Creatures[Pulsar], Width-20, Height-20)
-}
-
-func BoardAdd(c Creature, x0, y0 int) {
-	for y := 0; y < c.height; y++ {
-		for x := 0; x < c.width; x++ {
-			Board[(y+y0)%Height][(x+x0)%Width] = c.buf[y*c.width+x]
-		}
-	}
 }
