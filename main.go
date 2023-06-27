@@ -4,11 +4,6 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-var (
-	BackgroundColor = rl.Color{240, 240, 240, 255}
-	AliveColor      = rl.Color{50, 80, 80, 255}
-)
-
 func main() {
 	const (
 		ScreenWidth  = 640
@@ -79,7 +74,7 @@ func main() {
 
 		// Drawing
 		rl.BeginDrawing()
-		rl.ClearBackground(BackgroundColor)
+		rl.ClearBackground(Colors[0])
 
 		if state == StateRunning {
 			if frameNr%uint(NrFramesPerStep) == 0 {
@@ -101,13 +96,7 @@ func main() {
 
 		for y := int32(0); y < board.height; y++ {
 			for x := int32(0); x < board.width; x++ {
-				var cellColor rl.Color
-				switch board.At(x, y) {
-				case 0:
-					cellColor = BackgroundColor
-				case 1:
-					cellColor = AliveColor
-				}
+				cellColor := Colors[board.At(x, y)]
 				x0 := x * CellSize
 				y0 := y * CellSize
 				rl.DrawRectangle(int32(x0), int32(y0), CellSize, CellSize, cellColor)
@@ -117,13 +106,7 @@ func main() {
 		if len(selected.buf) > 0 {
 			for y := int32(0); y < selected.height; y++ {
 				for x := int32(0); x < selected.width; x++ {
-					var cellColor rl.Color
-					switch selected.At(x, y) {
-					case 0:
-						cellColor = BackgroundColor
-					case 1:
-						cellColor = AliveColor
-					}
+					cellColor := Colors[selected.At(x, y)]
 					x0 := ((x + mx) % board.width) * CellSize
 					y0 := ((y + my) % board.height) * CellSize
 					rl.DrawRectangle(int32(x0), int32(y0), CellSize, CellSize, cellColor)
@@ -143,6 +126,11 @@ func main() {
 		rl.EndDrawing()
 	}
 	rl.CloseWindow()
+}
+
+var Colors = [...]rl.Color{
+	{240, 240, 240, 255}, // Background/dead
+	{50, 80, 80, 255},    // Alive
 }
 
 type State int32
@@ -238,7 +226,7 @@ const (
 	CreatureCount
 )
 
-var Creatures = [CreatureCount]Rect{
+var Creatures = [...]Rect{
 	GliderRight: {
 		buf: []int32{
 			1, 0, 0,
