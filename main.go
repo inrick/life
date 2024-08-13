@@ -35,7 +35,7 @@ func main() {
 				panic([]int32{mx, my})
 			}
 			if len(selected.buf) == 0 {
-				*board.AtPtr(my, mx) = (board.At(my, mx) + 1) % 2
+				*board.AtPtr(mx, my) = (board.At(mx, my) + 1) % 2
 				state = StatePaused
 			} else {
 				board.Add(selected, mx, my)
